@@ -1,114 +1,95 @@
 import streamlit as st
-import pandas as pd
 from streamlit_gsheets import GSheetsConnection
-from datetime import datetime
+import pandas as pd
 
-# --- ПАРОЛЬ ---
-PASSWORD = "admin"
-
-# --- РАБОТА С GOOGLE SHEETS ---
-def get_data():
-    conn = st.connection("gsheets", type=GSheetsConnection)
-    try:
-        # ttl=0 чтобы данные обновлялись мгновенно
-        df = conn.read(ttl=0) 
-        return df
-    except:
-        return pd.DataFrame()
-
-def add_entry(item_name, buy_price, sell_price, is_refunded, status, comment):
-    conn = st.connection("gsheets", type=GSheetsConnection)
-    df = get_data()
-    
-    # Считаем профит
-    real_cost = 0 if is_refunded else buy_price
-    profit = sell_price - real_cost
-    
-    # Создаем новую строку
-    new_row = pd.DataFrame([{
-        "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
-        "item_name": item_name,
-        "buy_price": buy_price,
-        "sell_price": sell_price,
-        "is_refunded": is_refunded,
-        "status": status,
-        "comment": comment,
-        "profit": profit
-    }])
-    
-    # Добавляем в общую кучу
-    updated_df = pd.concat([df, new_row], ignore_index=True)
-    # Обновляем Google Таблицу
-    conn.update(data=updated_df)
-
-# --- ИНТЕРФЕЙС ---
+# 1. Настройка страницы (Всегда первая!)
 st.set_page_config(page_title="My Resell CRM", page_icon="💸", layout="wide")
 
-if 'logged_in' not in st.session_state:
-    st.session_state.logged_in = False
+# 2. Твой Ключ (Вшит прямо сюда)
+credentials = {
+  "type": "service_account",
+  "project_id": "skilled-booking-482818-h2",
+  "private_key_id": "94bd30329bbf5dc487f6a49908d41f9b7c7e58c9",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQCMzu3O5/acTOL7\nQHLf5+eMuYvlE/5CHV7rSn4zNOw+/ldlnA9yeXQw9U0IUauCNwVu/uJqb/WzPrBG\nqTs3sUujs7bD9uNAbgT4nWMCDRjAooAX3iTjK1eaUPfd9DJ6S0IzoBba2suHOkft\n1JqJD8wNRiyHpdYkM/QtCA54RfNMMHa1roipgOIxucCnCRCUtENZuLkjXr716qDF\nk+u57XWemvrLWH9nDnDuuzEleAPr2CEmOmXMF9R7j/oje2C4+SvJGcOYEZJR2pYt\nXNEd3lLOV7Xyj+RSzwDzLpV+PV4t0ESYSntb3X/7giM36a3Dj12BC2zZra+vTu0C\nqQd/UG5LAgMBAAECggEAM15AQkW8YVvpSHjED6wV/HAqOXl4Pd1iJdtIu9yYPQjj\nkFWFCyGEwmGS5zCILZpt+IayydqrW2dIvpZ5XIFpE0D6MXZthDE+zgX4uyRU/d2q\ndkqb0WYb8NeN/WJbUeMHtTa3b8L3Eg+wcvKnJ85kBgmuMBRPUWjEsPLp+HWoYwgW\neg4QVk2eOgsV5DwSMP4z1zC4g2VUDegcc0lcxvVAUpJvXtCu4ROxWK9IY4uXIsiy\nhtRFPX3zsCGHyYkwp9Tt9aNPoJc70wqE0F7Rb3+bW/ZGfSA9iqSjEsiGJU29ffqg\ncF0pDpfH9RbMkasNxT1gsd/S30C8yvo2iDyly3OTIQKBgQDFv01jY+AeSfzcSvzi\nPvVHVMEExwSXT2OtdNTus0/ncN9kLfFradR0j6IL+S2ARqs5RplzWyVhbQpPACIi\nF+sDTUSI8QlcMs2qAy7G6lhielhQ4iLfUHe0qKWvxAcJZfWOAIce3xquQHQoTLdR\nU3rmc8rPaisrqk32ttz4veKUawKBgQC2SbGqxN70O1PwG4vLLBWWoZ9zg9O3sMMB\nQ1ThwByXZPLS02Ok7aV2i5TDK1EhKLlboGc0xtGuvqcTpddNRtgDOe5II70DfOy6\nBdT0o2p/PCETYhWFgs67fUFNcSVCoQ9R7Sz7FX6O+IuDV9xAiqpAuCINnJ0r58L0\nddUw14EFoQKBgEyc/G+ob1ls0vHKf8VsHP2A4bNnI+k3kefPHvxILon9mh8nCaTT\nAMQULfUzmiRbvNTY/HTL+GSRqW/IHnFVEPFbi1T/BeBZsoLO7t2UR6AHxJW5t0cL\n1wUAXgkGCq/id8uHetJEIAMo55gBePiiPjhw3j+T45vsRH50hJI+hz13AoGAZuh3\nmpaF349Wtah3ZP3AOkeIAuibL4pkrGPcmY2hFn7w7sBT8poO3TuzgfMEXBnneqi1\nWwAbA/Gx1M+9Gm0yKbAcqzEx1bRC2EnOjUVsK+RAL/chezv7hbESmquTg2f1hCTH\nTgA2cHQ0HrQNLYqazuqkntaZjF3Mm8Gh127x8cECgYAFx9vuhs4y1a/DBPRVI6aU\nVO2npQS+L67JE0hBW6HxFVFcP6Cr6I4JG5wXvInjTR4XNEJhxKzqKuWH8d7NW7Xh\n4XugHniqV6qmMhi02GR6XasVX9roRpTOYkNpJLERAqXlWYh8yQddAUwUgE51g7Sx\nfTzyCXRu0L5wO2SBorHWBw==\n-----END PRIVATE KEY-----\n",
+  "client_email": "bot-191@skilled-booking-482818-h2.iam.gserviceaccount.com",
+  "client_id": "116070386511267179413",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/bot-191%40skilled-booking-482818-h2.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
 
-def login():
-    st.title("🔒 Вход в систему")
-    pwd = st.text_input("Пароль", type="password")
-    if st.button("Войти"):
-        if pwd == PASSWORD:
-            st.session_state.logged_in = True
-            st.rerun()
-        else:
-            st.error("Неверно")
+# 3. Ссылка на таблицу
+SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/1BT8z-LaDTUe8RzKwfJYafXteDjFeUKgz6U6N-EB9PTw/edit?gid=0#gid=0"
+
+# 4. Подключение (Новое имя 'private_gsheets' чтобы сбросить глюки)
+conn = st.connection("private_gsheets", type=GSheetsConnection, service_account=credentials)
+
+# --- Приложение ---
+
+def add_entry(name, buy, sell, is_ref, status, comm):
+    try:
+        df = conn.read(spreadsheet=SPREADSHEET_URL)
+    except:
+        df = pd.DataFrame(columns=["name", "buy_price", "sell_price", "is_refund", "status", "comment", "profit"])
+    
+    profit = sell - buy if not is_ref else sell
+    new_row = pd.DataFrame([{
+        "name": name, "buy_price": buy, "sell_price": sell,
+        "is_refund": is_ref, "status": status, "comment": comm, "profit": profit
+    }])
+    updated_df = pd.concat([df, new_row], ignore_index=True)
+    conn.update(spreadsheet=SPREADSHEET_URL, data=updated_df)
 
 def main_app():
-    st.sidebar.title("Меню")
-    page = st.sidebar.radio("Перейти:", ["Главная", "Добавить продажу", "Вся база"])
-    
-    # Кнопка ручного обновления на всякий случай
-    if st.sidebar.button("Обновить данные 🔄"):
-        st.cache_data.clear()
-        st.rerun()
+    with st.sidebar:
+        st.title("Меню")
+        page = st.radio("Навигация", ["Главная", "Добавить продажу", "Вся база"])
+        if st.button("Обновить 🔄"):
+            st.cache_data.clear()
+            st.rerun()
 
-    df = get_data()
+    try:
+        df = conn.read(spreadsheet=SPREADSHEET_URL)
+    except:
+        df = pd.DataFrame()
 
     if page == "Главная":
-        st.title("📈 Твоя Статистика")
+        st.title("📊 Статистика")
         if not df.empty:
-            # Превращаем колонки в цифры, чтобы считать сумму
-            df['profit'] = pd.to_numeric(df['profit'], errors='coerce').fillna(0)
-            df['sell_price'] = pd.to_numeric(df['sell_price'], errors='coerce').fillna(0)
-            
-            total_profit = df['profit'].sum()
-            total_sales = df['sell_price'].sum()
-            
             c1, c2 = st.columns(2)
-            c1.metric("💰 Чистый Профит", f"{total_profit:,.0f}")
-            c2.metric("💳 Оборот", f"{total_sales:,.0f}")
-            
-            st.divider()
-            st.subheader("Последние записи")
+            c1.metric("Прибыль", f"{df['profit'].sum():,.0f}")
+            c2.metric("Оборот", f"{df['sell_price'].sum():,.0f}")
             st.dataframe(df.tail(5))
         else:
-            st.info("База пуста. Добавь первую продажу!")
+            st.info("База пуста")
 
     elif page == "Добавить продажу":
-        st.title("➕ Добавить товар")
+        st.title("➕ Новая запись")
         with st.form("add"):
-            name = st.text_input("Название (Что продал?)")
+            name = st.text_input("Товар")
             c1, c2 = st.columns(2)
-            buy = c1.number_input("Купил за", min_value=0.0, step=100.0)
-            sell = c2.number_input("Продал за", min_value=0.0, step=100.0)
+            buy = c1.number_input("Закуп", step=100.0)
+            sell = c2.number_input("Продажа", step=100.0)
             status = st.selectbox("Статус", ["В наличии", "Продано", "Возврат"])
-            is_ref = st.checkbox("Был Рефанд? (Покупка = 0)")
-            comm = st.text_area("Заметка")
-            
+            is_ref = st.checkbox("Рефанд?")
+            comm = st.text_area("Инфо")
             if st.form_submit_button("Сохранить"):
                 add_entry(name, buy, sell, is_ref, status, comm)
-                st.success("Сохранено в Google Таблицу! ✅")
+                st.success("Готово! ✅")
 
     elif page == "Вся база":
-        st.title("📋 Все записи")
+        st.title("🗄 База данных")
         st.dataframe(df)
 
+def login():
+    st.title("🔒 Вход")
+    if st.button("Войти как Админ"): # Упростил вход для теста
+        st.session_state.logged_in = True
+        st.rerun()
+
 if __name__ == '__main__':
-    if st.session_state.logged_in:
-        main_app()
-    else:
-        login()
+    if 'logged_in' not in st.session_state: st.session_state.logged_in = False
+    if st.session_state.logged_in: main_app()
+    else: login()
