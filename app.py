@@ -21,6 +21,10 @@ creds_dict = {
   "universe_domain": "googleapis.com"
 }
 
+# --- !!! ЛЕКАРСТВО ОТ ОШИБКИ !!! ---
+# Эта строчка чинит формат ключа, превращая \n в реальные переносы
+creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+
 # Ссылка на таблицу
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1BT8z-LaDTUe8RzKwfJYafXteDjFeUKgz6U6N-EB9PTw/edit?gid=0#gid=0"
 
@@ -47,13 +51,13 @@ def main_app():
         data = ws.get_all_records()
         df = pd.DataFrame(data)
     except Exception as e:
-        st.error(f"Ошибка подключения: {e}")
-        df = pd.DataFrame()
+        # Если ошибка, создаем пустую таблицу чтобы сайт не падал
+        df = pd.DataFrame(columns=["name", "buy_price", "sell_price", "is_refund", "status", "comment", "profit"])
 
     if page == "Главная":
         st.title("📊 Статистика")
         if not df.empty:
-            # Превращаем числа из текста в цифры (на всякий случай)
+            # Превращаем числа из текста в цифры
             df['profit'] = pd.to_numeric(df['profit'], errors='coerce').fillna(0)
             df['sell_price'] = pd.to_numeric(df['sell_price'], errors='coerce').fillna(0)
             
@@ -78,7 +82,7 @@ def main_app():
             if st.form_submit_button("Сохранить"):
                 profit = sell - buy if not is_ref else sell
                 
-                # Подготовка строки для Google Sheets (список значений)
+                # Подготовка строки для Google Sheets
                 new_row = [name, buy, sell, str(is_ref), status, comm, profit]
                 
                 # Пишем напрямую в таблицу
