@@ -1,12 +1,13 @@
 import streamlit as st
-from streamlit_gsheets import GSheetsConnection
 import pandas as pd
+import gspread
+from google.oauth2.service_account import Credentials
 
-# 1. Настройка страницы (Всегда первая!)
+# --- 1. Настройка страницы ---
 st.set_page_config(page_title="My Resell CRM", page_icon="💸", layout="wide")
 
-# 2. Твой Ключ (Вшит прямо сюда)
-credentials = {
+# --- 2. Твой Ключ (Вшит здесь) ---
+creds_dict = {
   "type": "service_account",
   "project_id": "skilled-booking-482818-h2",
   "private_key_id": "94bd30329bbf5dc487f6a49908d41f9b7c7e58c9",
@@ -20,28 +21,18 @@ credentials = {
   "universe_domain": "googleapis.com"
 }
 
-# 3. Ссылка на таблицу
-SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/1BT8z-LaDTUe8RzKwfJYafXteDjFeUKgz6U6N-EB9PTw/edit?gid=0#gid=0"
+# Ссылка на таблицу
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1BT8z-LaDTUe8RzKwfJYafXteDjFeUKgz6U6N-EB9PTw/edit?gid=0#gid=0"
 
-# 4. Подключение (Новое имя 'private_gsheets' чтобы сбросить глюки)
-conn = st.connection("private_gsheets", type=GSheetsConnection, service_account=credentials)
+# --- 3. Функция Подключения (Напрямую к Google) ---
+def get_google_sheet():
+    scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+    creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+    client = gspread.authorize(creds)
+    # Открываем таблицу и берем первый лист
+    return client.open_by_url(SHEET_URL).get_worksheet(0)
 
 # --- Приложение ---
-
-def add_entry(name, buy, sell, is_ref, status, comm):
-    try:
-        df = conn.read(spreadsheet=SPREADSHEET_URL)
-    except:
-        df = pd.DataFrame(columns=["name", "buy_price", "sell_price", "is_refund", "status", "comment", "profit"])
-    
-    profit = sell - buy if not is_ref else sell
-    new_row = pd.DataFrame([{
-        "name": name, "buy_price": buy, "sell_price": sell,
-        "is_refund": is_ref, "status": status, "comment": comm, "profit": profit
-    }])
-    updated_df = pd.concat([df, new_row], ignore_index=True)
-    conn.update(spreadsheet=SPREADSHEET_URL, data=updated_df)
-
 def main_app():
     with st.sidebar:
         st.title("Меню")
@@ -50,20 +41,28 @@ def main_app():
             st.cache_data.clear()
             st.rerun()
 
+    # Загрузка данных
     try:
-        df = conn.read(spreadsheet=SPREADSHEET_URL)
-    except:
+        ws = get_google_sheet()
+        data = ws.get_all_records()
+        df = pd.DataFrame(data)
+    except Exception as e:
+        st.error(f"Ошибка подключения: {e}")
         df = pd.DataFrame()
 
     if page == "Главная":
         st.title("📊 Статистика")
         if not df.empty:
+            # Превращаем числа из текста в цифры (на всякий случай)
+            df['profit'] = pd.to_numeric(df['profit'], errors='coerce').fillna(0)
+            df['sell_price'] = pd.to_numeric(df['sell_price'], errors='coerce').fillna(0)
+            
             c1, c2 = st.columns(2)
             c1.metric("Прибыль", f"{df['profit'].sum():,.0f}")
             c2.metric("Оборот", f"{df['sell_price'].sum():,.0f}")
             st.dataframe(df.tail(5))
         else:
-            st.info("База пуста")
+            st.info("База пуста. Добавь первую запись!")
 
     elif page == "Добавить продажу":
         st.title("➕ Новая запись")
@@ -75,9 +74,18 @@ def main_app():
             status = st.selectbox("Статус", ["В наличии", "Продано", "Возврат"])
             is_ref = st.checkbox("Рефанд?")
             comm = st.text_area("Инфо")
+            
             if st.form_submit_button("Сохранить"):
-                add_entry(name, buy, sell, is_ref, status, comm)
-                st.success("Готово! ✅")
+                profit = sell - buy if not is_ref else sell
+                
+                # Подготовка строки для Google Sheets (список значений)
+                new_row = [name, buy, sell, str(is_ref), status, comm, profit]
+                
+                # Пишем напрямую в таблицу
+                ws = get_google_sheet()
+                ws.append_row(new_row)
+                
+                st.success("Готово! Записано напрямую в Google! ✅")
 
     elif page == "Вся база":
         st.title("🗄 База данных")
@@ -85,7 +93,7 @@ def main_app():
 
 def login():
     st.title("🔒 Вход")
-    if st.button("Войти как Админ"): # Упростил вход для теста
+    if st.button("Войти как Админ"):
         st.session_state.logged_in = True
         st.rerun()
 
